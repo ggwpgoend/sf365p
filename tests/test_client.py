@@ -100,6 +100,41 @@ async def test_iter_all_programs_walks_pages(client):
 
 
 @respx.mock
+async def test_program_sort_and_terms_passed(client):
+    route = respx.get(f"{API_BASE}/ui/program").mock(
+        return_value=httpx.Response(200, json={"items": [], "total": 1})
+    )
+    await client.list_programs(sort="activity", terms="only_vuln")
+    params = route.calls.last.request.url.params
+    assert params["sort"] == "activity"
+    assert params["terms"] == "only_vuln"
+    await client.aclose()
+
+
+async def test_invalid_sort_and_terms_raise(client):
+    with pytest.raises(Sf365Error):
+        await client.list_programs(sort="bogus")
+    with pytest.raises(Sf365Error):
+        await client.list_programs(terms="bogus")
+    await client.aclose()
+
+
+@respx.mock
+async def test_disclosed_filters_passed(client):
+    route = respx.get(f"{API_BASE}/report-disclose/").mock(
+        return_value=httpx.Response(200, json={"items": [], "totalEntries": 0})
+    )
+    await client.list_disclosed_reports(
+        program_ids=[79, 7], cwe=["CWE-79"], reward_from=1000, reward_to=5000
+    )
+    raw = str(route.calls.last.request.url)
+    assert "program_ids=79" in raw and "program_ids=7" in raw
+    assert "cwe=CWE-79" in raw
+    assert "reward_from=1000" in raw and "reward_to=5000" in raw
+    await client.aclose()
+
+
+@respx.mock
 async def test_cache_avoids_second_request():
     c = Sf365Client(cache_ttl=300)
     route = respx.get(f"{API_BASE}/ui/landing/top-programs").mock(

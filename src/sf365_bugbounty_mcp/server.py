@@ -52,25 +52,42 @@ def _render(summary: str, raw: Any) -> str:
 
 
 @mcp.tool()
-async def list_programs(page: int = 1, search: str | None = None) -> str:
+async def list_programs(
+    page: int = 1,
+    search: str | None = None,
+    sort: str | None = None,
+    terms: str | None = None,
+) -> str:
     """List bug bounty programs on Standoff 365 (paginated, ~5 per page).
 
     Args:
         page: 1-based page number.
         search: Optional text filter applied server-side (matches name/vendor).
+        sort: Order by 'program_name', 'activity', or 'created_at'.
+        terms: Filter by program type — 'only_vuln' (classic bug bounty),
+            'only_risks' (business-risk), or 'no_limits'.
 
     Returns a Markdown summary plus raw JSON. The envelope includes ``total``
-    (page count) and ``totalEntries`` (program count) for pagination.
+    (page count) and ``totalEntries`` (program count) for pagination. To keep
+    context small, list items omit the long rules text — use ``get_program``
+    for a program's full card.
     """
     try:
-        data = await get_client().list_programs(page=page, search=search)
+        data = await get_client().list_programs(
+            page=page, search=search, sort=sort, terms=terms
+        )
     except Sf365Error as exc:
         return f"Error: {exc}"
-    return _render(fmt.programs_summary(data, search=search), data)
+    return _render(fmt.programs_summary(data, search=search), fmt.slim_programs_envelope(data))
 
 
 @mcp.tool()
-async def search_programs(query: str, max_results: int = 25) -> str:
+async def search_programs(
+    query: str,
+    max_results: int = 25,
+    sort: str | None = None,
+    terms: str | None = None,
+) -> str:
     """Search across ALL program pages and return matches in one shot.
 
     Use this instead of paging through ``list_programs`` when you have a
@@ -79,9 +96,13 @@ async def search_programs(query: str, max_results: int = 25) -> str:
     Args:
         query: Search text (matches program/vendor name).
         max_results: Cap on returned programs.
+        sort: Order by 'program_name', 'activity', or 'created_at'.
+        terms: Filter by program type — 'only_vuln', 'only_risks', 'no_limits'.
+
+    List items omit the long rules text; use ``get_program`` for full detail.
     """
     try:
-        items = await get_client().iter_all_programs(search=query)
+        items = await get_client().iter_all_programs(search=query, sort=sort, terms=terms)
     except Sf365Error as exc:
         return f"Error: {exc}"
     items = items[: max(1, max_results)]
@@ -89,7 +110,7 @@ async def search_programs(query: str, max_results: int = 25) -> str:
         {"items": items, "page": 1, "total": 1, "totalEntries": len(items)},
         search=query,
     )
-    return _render(summary, items)
+    return _render(summary, [fmt.slim_program(p) for p in items])
 
 
 @mcp.tool()
@@ -203,16 +224,50 @@ async def list_vendors(page: int = 1) -> str:
 
 
 @mcp.tool()
-async def list_disclosed_reports(page: int = 1) -> str:
-    """List publicly disclosed vulnerability reports (paginated).
+async def list_disclosed_reports(
+    page: int = 1,
+    program_ids: list[int] | None = None,
+    cwe: list[str] | None = None,
+    reward_from: int | None = None,
+    reward_to: int | None = None,
+    severity: str | None = None,
+) -> str:
+    """List publicly disclosed vulnerability reports (paginated, with filters).
 
     Useful for learning from past findings: each entry references its program,
     severity, reward and author.
+
+    Args:
+        page: 1-based page number.
+        program_ids: Restrict to these program ids (repeatable).
+        cwe: Restrict to these CWE ids, e.g. ["CWE-79", "CWE-89"].
+        reward_from: Minimum reward amount.
+        reward_to: Maximum reward amount.
+        severity: Keep only this severity (critical/high/medium/low). Applied
+            client-side to the returned page (the API has no severity filter).
     """
     try:
-        data = await get_client().list_disclosed_reports(page=page)
+        data = await get_client().list_disclosed_reports(
+            page=page,
+            program_ids=program_ids,
+            cwe=cwe,
+            reward_from=reward_from,
+            reward_to=reward_to,
+        )
     except Sf365Error as exc:
         return f"Error: {exc}"
+    if severity:
+        sev = severity.lower()
+        total_before = len(data.get("items", []))
+        kept = [r for r in data.get("items", []) if (r.get("severity") or "").lower() == sev]
+        data = {**data, "items": kept}
+        summary = fmt.disclosed_list_summary(data)
+        summary += (
+            f"\n\n_Note: severity='{severity}' was filtered client-side on this "
+            f"page only ({len(kept)}/{total_before} items kept). The 'total' "
+            f"count above is the unfiltered server total._"
+        )
+        return _render(summary, data)
     return _render(fmt.disclosed_list_summary(data), data)
 
 

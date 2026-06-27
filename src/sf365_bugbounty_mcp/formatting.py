@@ -12,6 +12,55 @@ SEVERITY_ORDER = ["critical", "high", "medium", "low", "none"]
 
 _CURRENCY_SIGN = {"rub": "₽", "usd": "$", "eur": "€"}
 
+# Fields kept in list/search raw JSON. The full program card (notably the
+# ~18 KB `description`/rules) is dropped here to keep agent context small —
+# fetch it with get_program / get_program_full instead.
+PROGRAM_LIST_FIELDS = (
+    "id",
+    "vendorId",
+    "slug",
+    "name",
+    "shortDescription",
+    "visibility",
+    "terms",
+    "contractType",
+    "status",
+    "finished",
+    "finishedAt",
+    "publishedAt",
+    "createdAt",
+    "updatedAt",
+    "participantsCount",
+    "onlyMaxPayment",
+    "canShareRewards",
+    "triageEnabled",
+    "reportsForbidden",
+    "hasLimits",
+    "participationFormat",
+    "vendor",
+    "statistics",
+    # present on landing/top-program items:
+    "vendorName",
+    "maxSeverityReward",
+    "currency",
+    "severity",
+    "reportsCount",
+    "acceptedReportsCount",
+)
+
+
+def slim_program(p: dict[str, Any]) -> dict[str, Any]:
+    """Project a program down to list-relevant fields (drops heavy text)."""
+    return {k: p[k] for k in PROGRAM_LIST_FIELDS if k in p}
+
+
+def slim_programs_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
+    """Return the listing envelope with each item slimmed."""
+    return {
+        **envelope,
+        "items": [slim_program(p) for p in envelope.get("items", [])],
+    }
+
 
 def money(amount: Any, currency: str | None) -> str:
     if amount is None:

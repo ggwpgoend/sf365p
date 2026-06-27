@@ -1,6 +1,32 @@
 from sf365_bugbounty_mcp import formatting as fmt
 
 
+def test_slim_program_drops_heavy_description():
+    item = {
+        "id": 1,
+        "name": "X",
+        "slug": "x",
+        "visibility": "public",
+        "description": "A" * 18000,
+        "specialRules": "B" * 500,
+        "vendor": {"name": "V"},
+        "statistics": {"reportsCount": 5},
+    }
+    slim = fmt.slim_program(item)
+    assert "description" not in slim
+    assert "specialRules" not in slim
+    assert slim["name"] == "X"
+    assert slim["vendor"] == {"name": "V"}
+    assert slim["statistics"] == {"reportsCount": 5}
+
+
+def test_slim_envelope_preserves_pagination():
+    env = {"items": [{"id": 1, "description": "x" * 5000}], "page": 2, "total": 3, "totalEntries": 12}
+    slim = fmt.slim_programs_envelope(env)
+    assert slim["page"] == 2 and slim["totalEntries"] == 12
+    assert "description" not in slim["items"][0]
+
+
 def test_money_formats_rubles_with_spaces():
     assert fmt.money(250000, "rub") == "250 000 ₽"
     assert fmt.money(None, "rub") == "—"

@@ -41,6 +41,13 @@ SCOPE_SORTS = {
     "created_at_desc",
 }
 
+# Sort keys accepted by the program listing (validated server-side).
+PROGRAM_SORTS = {"program_name", "activity", "created_at"}
+
+# "terms" filter values for the program listing. only_vuln = classic bug
+# bounty, only_risks = business-risk programs, no_limits = unrestricted.
+PROGRAM_TERMS = {"only_vuln", "only_risks", "no_limits"}
+
 
 class Sf365Error(RuntimeError):
     """Raised when the API returns an error that callers should see."""
@@ -189,12 +196,26 @@ class Sf365Client:
         *,
         page: int = 1,
         search: str | None = None,
+        sort: str | None = None,
+        terms: str | None = None,
         language: str | None = None,
     ) -> dict[str, Any]:
-        """One page of programs. Envelope: items, page, total (pages), totalEntries."""
+        """One page of programs. Envelope: items, page, total (pages), totalEntries.
+
+        ``sort`` must be one of PROGRAM_SORTS; ``terms`` one of PROGRAM_TERMS.
+        Invalid values are dropped rather than sent (the API would 422).
+        """
+        if sort is not None and sort not in PROGRAM_SORTS:
+            raise Sf365Error(
+                f"Invalid sort '{sort}'. Allowed: {sorted(PROGRAM_SORTS)}"
+            )
+        if terms is not None and terms not in PROGRAM_TERMS:
+            raise Sf365Error(
+                f"Invalid terms '{terms}'. Allowed: {sorted(PROGRAM_TERMS)}"
+            )
         return await self._get(
             "/ui/program",
-            params={"page": max(1, page), "search": search},
+            params={"page": max(1, page), "search": search, "sort": sort, "terms": terms},
             language=language,
         )
 
@@ -202,15 +223,21 @@ class Sf365Client:
         self,
         *,
         search: str | None = None,
+        sort: str | None = None,
+        terms: str | None = None,
         language: str | None = None,
         max_pages: int = 100,
     ) -> list[dict[str, Any]]:
-        """Fetch every program across all pages (respecting the search filter)."""
-        first = await self.list_programs(page=1, search=search, language=language)
+        """Fetch every program across all pages (respecting search/sort/terms)."""
+        first = await self.list_programs(
+            page=1, search=search, sort=sort, terms=terms, language=language
+        )
         items = list(first.get("items", []))
         total_pages = int(first.get("total", 1) or 1)
         for page in range(2, min(total_pages, max_pages) + 1):
-            chunk = await self.list_programs(page=page, search=search, language=language)
+            chunk = await self.list_programs(
+                page=page, search=search, sort=sort, terms=terms, language=language
+            )
             items.extend(chunk.get("items", []))
         return items
 
@@ -264,11 +291,32 @@ class Sf365Client:
     # -- disclosed reports ----------------------------------------------
 
     async def list_disclosed_reports(
-        self, *, page: int = 1, language: str | None = None
+        self,
+        *,
+        page: int = 1,
+        program_ids: list[int] | None = None,
+        cwe: list[str] | None = None,
+        reward_from: int | None = None,
+        reward_to: int | None = None,
+        language: str | None = None,
     ) -> dict[str, Any]:
-        return await self._get(
-            "/report-disclose/", params={"page": max(1, page)}, language=language
-        )
+        """Publicly disclosed reports, with optional server-side filters.
+
+        Filters: ``program_ids`` (repeatable), ``cwe`` (e.g. ["CWE-79"]),
+        and a ``reward_from``/``reward_to`` payout range. The API does not
+        filter by severity, so callers should filter the ``severity`` field
+        client-side if needed.
+        """
+        params: dict[str, Any] = {"page": max(1, page)}
+        if program_ids:
+            params["program_ids"] = program_ids
+        if cwe:
+            params["cwe"] = cwe
+        if reward_from is not None:
+            params["reward_from"] = reward_from
+        if reward_to is not None:
+            params["reward_to"] = reward_to
+        return await self._get("/report-disclose/", params=params, language=language)
 
     async def get_disclosed_report(
         self, report_id: int, *, language: str | None = None

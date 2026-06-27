@@ -77,8 +77,8 @@ token from an authenticated browser session (DevTools → Network →
 
 | Tool                    | Description                                            |
 | ----------------------- | ------------------------------------------------------ |
-| `list_programs`         | One page of programs (with optional `search`).         |
-| `search_programs`       | Search across all pages for a keyword.                 |
+| `list_programs`         | One page of programs (`search`, `sort`, `terms`).      |
+| `search_programs`       | Search across all pages for a keyword (`sort`, `terms`).|
 | `get_program`           | Full program card by id or slug (rules included).      |
 | `get_program_scope`     | In-scope assets for a program.                         |
 | `get_program_rewards`   | Reward range table by severity.                        |
@@ -86,8 +86,16 @@ token from an authenticated browser session (DevTools → Network →
 | `list_top_programs`     | Featured programs (landing).                           |
 | `list_top_rewards`      | Top payouts (landing).                                 |
 | `list_vendors`          | Companies running programs.                            |
-| `list_disclosed_reports`| Publicly disclosed reports.                            |
+| `list_disclosed_reports`| Disclosed reports (`program_ids`, `cwe`, reward range).|
 | `get_disclosed_report`  | Full text of one disclosed report.                     |
+
+**Program filters:** `sort` ∈ {`program_name`, `activity`, `created_at`};
+`terms` ∈ {`only_vuln` (classic bug bounty), `only_risks` (business-risk),
+`no_limits`}.
+
+**Context efficiency:** `list_programs` / `search_programs` return slimmed
+items (the ~18 KB per-program rules text is omitted) — roughly an 8× smaller
+payload. Use `get_program` / `get_program_full` for a program's full card.
 
 ## Development
 
